@@ -9,7 +9,6 @@ static NSString* const DEFAULT_CORDOVA_BASE_URL = @"";
 
 @interface CDVHostedWebApp ()
 
-@property UIWebView *offlineView;
 @property NSString *offlinePage;
 @property NSString *manifestError;
 @property BOOL enableOfflineSupport;
@@ -35,7 +34,7 @@ static NSString* const DEFAULT_CORDOVA_BASE_URL = @"";
 - (void)webView:(WKWebView*)theWebView didFailProvisionalNavigation:(WKNavigation*)navigation withError:(NSError*)error
 {
     [self.wrappedDelegate webView:theWebView didFailProvisionalNavigation:navigation withError:error];
-    
+
     [self webView:theWebView didFailNavigation:navigation withError:error];
 }
 
@@ -103,7 +102,7 @@ static NSString* const defaultManifestFileName = @"manifest.json";
                                              selector:@selector(appStateChange)
                                                  name:UIApplicationWillEnterForegroundNotification
                                                object:nil];
-    
+
     // enable offline support by default
     self.enableOfflineSupport = YES;
 
@@ -118,15 +117,8 @@ static NSString* const defaultManifestFileName = @"manifest.json";
 
     notificationDelegate.wrappedDelegate = ((WKWebView*)self.webView).navigationDelegate;
     [(WKWebView*)self.webView setNavigationDelegate:(id<WKNavigationDelegate>)notificationDelegate];
-    
 
-    id offlineFeature = [manifest objectForKey:@"mjs_offline_feature"];
-    if (offlineFeature != nil && [offlineFeature boolValue] == NO) {
-        self.enableOfflineSupport = NO;
-    } else {
-        // creates the UI to show offline mode
-        [self createOfflineView];
-    }
+    self.enableOfflineSupport = NO;
 }
 
 // loads the specified W3C manifest
@@ -175,7 +167,7 @@ static NSString* const defaultManifestFileName = @"manifest.json";
 }
 
 - (void)injectPluginScript:(CDVInvokedUrlCommand*)command
-{    
+{
     NSArray* scriptList = @[[command.arguments objectAtIndex:0]];
     BOOL result = [self injectScripts:scriptList];
     CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsBool:result];
@@ -213,7 +205,7 @@ static NSString* const defaultManifestFileName = @"manifest.json";
     }
 
     if([parsedManifest isKindOfClass:[NSDictionary class]]) {
-        [[NSNotificationCenter defaultCenter] postNotificationName:kManifestLoadedNotification object:parsedManifest];        
+        [[NSNotificationCenter defaultCenter] postNotificationName:kManifestLoadedNotification object:parsedManifest];
         return parsedManifest;
     }
 
@@ -223,7 +215,7 @@ static NSString* const defaultManifestFileName = @"manifest.json";
 }
 
 - (BOOL)injectScripts:(NSArray*)scriptList
-{    
+{
     NSString* content = @"";
     for (NSString* scriptName in scriptList)
     {
@@ -239,7 +231,7 @@ static NSString* const defaultManifestFileName = @"manifest.json";
         {
             fileContents = [NSString stringWithContentsOfURL:scriptUrl encoding:NSUTF8StringEncoding error:&error];
         }
-        
+
         if (error == nil) {
             // prefix with @ sourceURL=<scriptName> comment to make the injected scripts visible in Safari's Web Inspector for debugging purposes
             content = [content stringByAppendingFormat:@"\r\n//@ sourceURL=%@\r\n%@", scriptName, fileContents];
@@ -248,10 +240,9 @@ static NSString* const defaultManifestFileName = @"manifest.json";
             NSLog(@"ERROR failed to load script file: '%@'", scriptName);
         }
     }
-    
-    //return[(UIWebView*)self.webView stringByEvaluatingJavaScriptFromString:content] != nil;
+
     [(WKWebView*)self.webView evaluateJavaScript:content completionHandler:NULL];
-    return TRUE; //HACK: Return result is returned asynchronously, so this really needs to be changed to have a completion callback instead as well 
+    return TRUE; //HACK: Return result is returned asynchronously, so this really needs to be changed to have a completion callback instead as well
 }
 
 - (BOOL)isCordovaEnabled
@@ -268,7 +259,7 @@ static NSString* const defaultManifestFileName = @"manifest.json";
                 if ([self isMatchingRuleForPage:rule withPlatformCheck:YES])
                 {
                     setting = [rule objectForKey:@"access"];
-                    
+
                     NSString* access = setting != nil ?
                         [(NSString*)setting stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] : nil;
                     if (access == nil || [access isEqualToString:@"cordova"])
@@ -287,7 +278,7 @@ static NSString* const defaultManifestFileName = @"manifest.json";
             }
         }
     }
-    
+
     return enableCordova;
 }
 
@@ -308,14 +299,14 @@ static NSString* const defaultManifestFileName = @"manifest.json";
                     break;
                 }
             }
-            
+
             if (!isPlatformMatch)
             {
                 return NO;
             }
         }
     }
-    
+
     // ensure rule applies to current page
     BOOL isURLMatch = YES;
     NSObject* setting = [rule objectForKey:@"match"];
@@ -330,7 +321,7 @@ static NSString* const defaultManifestFileName = @"manifest.json";
         {
             match = [NSArray arrayWithObjects:setting, nil];
         }
-        
+
         if (match != nil)
         {
             CDVWhitelist* whitelist = [[CDVWhitelist alloc] initWithArray:match];
@@ -338,42 +329,8 @@ static NSString* const defaultManifestFileName = @"manifest.json";
             isURLMatch = [whitelist URLIsAllowed:url];
         }
     }
-    
+
     return isURLMatch;
-}
-
-// Creates an additional webview to load the offline page, places it above the content webview, and hides it. It will
-// be made visible whenever network connectivity is lost.
-- (void)createOfflineView
-{
-    CGRect webViewBounds = self.webView.bounds;
-
-    webViewBounds.origin = self.webView.bounds.origin;
-
-    self.offlineView = [[UIWebView alloc] initWithFrame:webViewBounds];
-    self.offlineView.autoresizingMask = (UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight);
-    [self.offlineView setHidden:YES];
-
-    [self.viewController.view addSubview:self.offlineView];
-
-    NSURL* offlinePageURL = [NSURL URLWithString:self.offlinePage];
-    if (offlinePageURL == nil) {
-        offlinePageURL = [NSURL URLWithString:@"offline.html"];
-    }
-
-    NSString* offlineFilePath = [self.commandDelegate pathForResource:[offlinePageURL path]];
-    if (offlineFilePath != nil) {
-        offlinePageURL = [NSURL fileURLWithPath:offlineFilePath];
-        [self.offlineView loadRequest:[NSURLRequest requestWithURL:offlinePageURL]];
-    }
-    else {
-        NSString* offlinePageTemplate = @"<html><body><div style=\"height:100%;position:absolute;top:0;bottom:0;left:0;right:0;margin:auto 20;font-size:x-large;text-align:center;\">%@</div></body></html>";
-        [self.offlineView
-            loadHTMLString:[NSString stringWithFormat:offlinePageTemplate, @"It looks like you are offline. Please reconnect to use this application."]
-            baseURL:nil];
-    }
-
-    [self.viewController.view sendSubviewToBack:self.webView];
 }
 
 - (void)networkReachabilityChanged:(NSNotification*)notification
@@ -424,7 +381,7 @@ static NSString* const defaultManifestFileName = @"manifest.json";
         if (!self.failedURL) {
             [self.offlineView setHidden:YES];
         }
-        
+
         // inject Cordova
         if ([self isCordovaEnabled])
         {
@@ -433,38 +390,38 @@ static NSString* const defaultManifestFileName = @"manifest.json";
             {
                 setting = [[NSDictionary alloc] init];
             }
-            
+
             NSDictionary* cordova = (NSDictionary*) setting;
-            
+
             setting = [cordova objectForKey:@"plugin_mode"];
             NSString* pluginMode = (setting != nil && [setting isKindOfClass:[NSString class]])
                 ? [(NSString*)setting stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]]
                 : DEFAULT_PLUGIN_MODE;
-            
+
             setting = [cordova objectForKey:@"base_url"];
             NSString* cordovaBaseUrl = (setting != nil && [setting isKindOfClass:[NSString class]])
                 ? [(NSString*)setting stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]]
                 : DEFAULT_CORDOVA_BASE_URL;
-            
+
             if (![cordovaBaseUrl hasSuffix:@"/"])
             {
                 cordovaBaseUrl = [cordovaBaseUrl stringByAppendingString:@"/"];
             }
-            
+
             NSString* javascript = [NSString stringWithFormat:@"window.hostedWebApp = { 'platform': '%@', 'pluginMode': '%@', 'cordovaBaseUrl': '%@'};", IOS_PLATFORM, pluginMode, cordovaBaseUrl];
             [(WKWebView*)self.webView evaluateJavaScript:javascript completionHandler:NULL];
-            
+
             NSMutableArray* scripts = [[NSMutableArray alloc] init];
             if ([pluginMode isEqualToString:@"client"])
             {
                 [scripts addObject:@"cordova.js"];
             }
-            
+
             [scripts addObject:@"plugins/cordova-plugin-ionic-webview/src/www/ios/ios-wkwebview-exec.js"];
             [scripts addObject:@"hostedapp-bridge.js"];
             [self injectScripts:scripts];
         }
-        
+
         // inject custom scripts
         NSObject* setting = [self.manifest objectForKey:@"mjs_import_scripts"];
         if (setting != nil && [setting isKindOfClass:[NSArray class]])
@@ -509,27 +466,10 @@ static NSString* const defaultManifestFileName = @"manifest.json";
     }
 }
 
-#ifndef __CORDOVA_4_0_0
-- (BOOL)shouldOverrideLoadWithRequest:(NSURLRequest*)request navigationType:(UIWebViewNavigationType)navigationType
-{
-    NSURL* url = [request URL];
-
-    if (![self shouldAllowNavigation:url])
-    {
-        if ([[UIApplication sharedApplication] canOpenURL:url])
-        {
-            [[UIApplication sharedApplication] openURL:url]; // opens the URL outside the webview
-            return YES;
-        }
-    }
-    
-    return NO;
-}
-
 - (BOOL)shouldAllowNavigation:(NSURL*)url
 {
     NSMutableArray* scopeList = [[NSMutableArray alloc] initWithCapacity:0];
-    
+
     // determine base rule based on the start_url and the scope
     NSURL* baseURL = nil;
     NSString* startURL = [self.manifest objectForKey:@"start_url"];
@@ -540,18 +480,18 @@ static NSString* const defaultManifestFileName = @"manifest.json";
             baseURL = [NSURL URLWithString:scope relativeToURL:baseURL];
         }
     }
-    
+
     if (baseURL != nil) {
         // If there are no wildcards in the pattern, add '*' at the end
         if (![[baseURL absoluteString] containsString:@"*"]) {
             baseURL = [NSURL URLWithString:@"*" relativeToURL:baseURL];
         }
-        
-        
+
+
         // add base rule to the scope list
         [scopeList addObject:[baseURL absoluteString]];
     }
-    
+
     // add additional navigation rules from mjs_access_whitelist
     // TODO: mjs_access_whitelist is deprecated. Should be removed in future versions
     NSObject* setting = [self.manifest objectForKey:@"mjs_access_whitelist"];
@@ -570,7 +510,7 @@ static NSString* const defaultManifestFileName = @"manifest.json";
             }
         }
     }
-    
+
     // add additional navigation rules from mjs_extended_scope
     setting = [self.manifest objectForKey:@"mjs_extended_scope"];
     if (setting != nil && [setting isKindOfClass:[NSArray class]])
@@ -584,7 +524,7 @@ static NSString* const defaultManifestFileName = @"manifest.json";
             }
         }
     }
-    
+
     return [[[CDVWhitelist alloc] initWithArray:scopeList] URLIsAllowed:url];
 }
 #endif
