@@ -349,11 +349,9 @@ static NSString* const defaultManifestFileName = @"manifest.json";
         BOOL isOffline = (reachability.currentReachabilityStatus == NotReachable);
         NSLog (@"Received a network connectivity change notification. The device is currently %@.", isOffline ? @"offLine" : @"online");
         if (self.enableOfflineSupport) {
-            else {
-                if (self.failedURL) {
-                    [(WKWebView*)self.webView loadRequest:[NSURLRequest requestWithURL:self.failedURL]];
-                }
-            }
+             if (self.failedURL) {
+                [(WKWebView*)self.webView loadRequest:[NSURLRequest requestWithURL:self.failedURL]];
+             }
         }
     }
 }
